@@ -193,31 +193,6 @@
     .message.error {
       color: #e74c3c;
     }
-
-    /* Tooltip */
-    .tooltip {
-      position: absolute;
-      background: #333;
-      color: white;
-      padding: 8px 12px;
-      border-radius: 4px;
-      font-size: 12px;
-      max-width: 300px;
-      word-wrap: break-word;
-      pointer-events: none;
-      z-index: 1000;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-    }
-
-    .tooltip::before {
-      content: '';
-      position: absolute;
-      top: -6px;
-      left: 20px;
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-bottom: 6px solid #333;
-    }
   </style>
 </head>
 <body>
@@ -355,10 +330,8 @@ const STYLE_SCALE = [
 ];
 
 const FONT_SIZES = [10, 11, 12, 14, 16];
-const NODE_WIDTH = 240;
-const NODE_HEIGHT_BASE = 50;
-const NODE_HEIGHT_PER_LINE = 16;
-const MAX_CHARS_PER_LINE = 28;
+const NODE_WIDTH = 160;
+const NODE_HEIGHT = 50;
 
 // ==================================================
 // GLOBAL STATE
@@ -395,42 +368,6 @@ function getFontSize(depth, maxDepth) {
   const normalizedDepth = 1 - (depth / maxDepth);
   const index = Math.round(normalizedDepth * (FONT_SIZES.length - 1));
   return FONT_SIZES[index];
-}
-
-// Wrap text into multiple lines
-function wrapText(text, maxCharsPerLine) {
-  const words = text.split(' ');
-  const lines = [];
-  let currentLine = '';
-  
-  words.forEach(word => {
-    if (currentLine.length + word.length + 1 <= maxCharsPerLine) {
-      currentLine += (currentLine ? ' ' : '') + word;
-    } else {
-      if (currentLine) lines.push(currentLine);
-      // Handle words longer than maxCharsPerLine
-      if (word.length > maxCharsPerLine) {
-        while (word.length > maxCharsPerLine) {
-          lines.push(word.substring(0, maxCharsPerLine - 1) + '-');
-          word = word.substring(maxCharsPerLine - 1);
-        }
-        currentLine = word;
-      } else {
-        currentLine = word;
-      }
-    }
-  });
-  
-  if (currentLine) lines.push(currentLine);
-  return lines;
-}
-
-// Calculate node height based on text content
-function calculateNodeHeight(name, category) {
-  const nameLines = wrapText(name, MAX_CHARS_PER_LINE);
-  const categoryLines = category ? 1 : 0;
-  const totalLines = nameLines.length + categoryLines;
-  return Math.max(NODE_HEIGHT_BASE, 30 + totalLines * NODE_HEIGHT_PER_LINE);
 }
 
 function setStatus(msg, type = 'loading') {
@@ -647,7 +584,7 @@ function dagToTreeLayout(root, depths) {
 }
 
 // ==================================================
-// DRAW SVG SHAPE (with dynamic height support)
+// DRAW SVG SHAPE
 // ==================================================
 function drawShape(selection, shapeType, width, height, fill, stroke, statusStroke) {
   const halfW = width / 2;
@@ -773,15 +710,12 @@ function update(depths) {
   const svg = d3.select('#treeSvg');
   svg.selectAll('*').remove();
 
-  // Remove any existing tooltips
-  d3.selectAll('.tooltip').remove();
-
   const allNodes = currentRoot.descendants();
   const visibleCount = allNodes.length;
   
-  const margin = { top: 60, right: 280, bottom: 60, left: 140 };
-  const width = Math.max(1400, (maxDepth + 1) * 320 + margin.left + margin.right);
-  const height = Math.max(800, visibleCount * 80 + margin.top + margin.bottom);
+  const margin = { top: 60, right: 250, bottom: 60, left: 120 };
+  const width = Math.max(1400, (maxDepth + 1) * 280 + margin.left + margin.right);
+  const height = Math.max(800, visibleCount * 65 + margin.top + margin.bottom);
 
   svg.attr('width', width).attr('height', height);
 
@@ -791,7 +725,7 @@ function update(depths) {
 
   const treeLayout = d3.tree()
     .size([height - margin.top - margin.bottom, width - margin.left - margin.right - 150])
-    .separation((a, b) => (a.parent === b.parent ? 1.2 : 1.5));
+    .separation((a, b) => (a.parent === b.parent ? 1 : 1.3));
 
   treeLayout(currentRoot);
 
@@ -817,11 +751,6 @@ function update(depths) {
     })
     .attr('d', linkGenerator);
 
-  // Create tooltip div
-  const tooltip = d3.select('body').append('div')
-    .attr('class', 'tooltip')
-    .style('display', 'none');
-
   // Draw nodes
   const nodes = g.selectAll('.node')
     .data(currentRoot.descendants())
@@ -839,32 +768,9 @@ function update(depths) {
         }
         renderDAG();
       }
-    })
-    .on('mouseenter', (event, d) => {
-      const fullName = d.data.name;
-      const category = d.data.data ? d.data.data.category : '';
-      const notes = d.data.data ? d.data.data.notes : '';
-      
-      let tooltipContent = `<strong>${fullName}</strong>`;
-      if (category) tooltipContent += `<br><em>Category: ${category}</em>`;
-      if (notes) tooltipContent += `<br>Notes: ${notes}`;
-      
-      tooltip
-        .html(tooltipContent)
-        .style('display', 'block')
-        .style('left', (event.pageX + 10) + 'px')
-        .style('top', (event.pageY + 10) + 'px');
-    })
-    .on('mousemove', (event) => {
-      tooltip
-        .style('left', (event.pageX + 10) + 'px')
-        .style('top', (event.pageY + 10) + 'px');
-    })
-    .on('mouseleave', () => {
-      tooltip.style('display', 'none');
     });
 
-  // Draw shapes based on depth with status border and dynamic height
+  // Draw shapes based on depth with status border
   nodes.each(function(d) {
     const nodeDepth = d.data.depth !== undefined ? d.data.depth : d.depth;
     const style = getStyleForDepth(nodeDepth, maxDepth);
@@ -873,14 +779,7 @@ function update(depths) {
     const statusColorObj = getStatusColor(status);
     const statusStroke = statusColorObj ? statusColorObj.stroke : null;
     
-    const name = d.data.name;
-    const category = d.data.data ? d.data.data.category : '';
-    const nodeHeight = calculateNodeHeight(name, category);
-    
-    // Store height for later use
-    d.nodeHeight = nodeHeight;
-    
-    drawShape(d3.select(this), style.shape, NODE_WIDTH, nodeHeight, style.fill, defaultStroke, statusStroke);
+    drawShape(d3.select(this), style.shape, NODE_WIDTH, NODE_HEIGHT, style.fill, defaultStroke, statusStroke);
   });
 
   // Status indicator circle (top-left corner)
@@ -888,7 +787,7 @@ function update(depths) {
     .append('circle')
     .attr('class', 'status-indicator')
     .attr('cx', -NODE_WIDTH / 2 + 12)
-    .attr('cy', d => -(d.nodeHeight || NODE_HEIGHT_BASE) / 2 + 12)
+    .attr('cy', -NODE_HEIGHT / 2 + 12)
     .attr('r', 7)
     .attr('fill', d => getStatusColor(d.data.data.status).fill)
     .attr('stroke', d => getStatusColor(d.data.data.status).stroke);
@@ -897,7 +796,7 @@ function update(depths) {
   nodes.filter(d => d.data.hasMultipleParents)
     .append('circle')
     .attr('cx', NODE_WIDTH / 2 - 12)
-    .attr('cy', d => -(d.nodeHeight || NODE_HEIGHT_BASE) / 2 + 12)
+    .attr('cy', -NODE_HEIGHT / 2 + 12)
     .attr('r', 7)
     .attr('fill', '#3498db')
     .attr('stroke', '#2980b9')
@@ -906,7 +805,7 @@ function update(depths) {
   nodes.filter(d => d.data.hasMultipleParents)
     .append('text')
     .attr('x', NODE_WIDTH / 2 - 12)
-    .attr('y', d => -(d.nodeHeight || NODE_HEIGHT_BASE) / 2 + 12)
+    .attr('y', -NODE_HEIGHT / 2 + 12)
     .attr('text-anchor', 'middle')
     .attr('dy', '0.35em')
     .attr('font-size', '9px')
@@ -914,42 +813,32 @@ function update(depths) {
     .attr('font-weight', 'bold')
     .text(d => d.data.data.parents.length);
 
-  // Node labels with text wrapping
-  nodes.each(function(d) {
-    const node = d3.select(this);
-    const name = d.data.name;
-    const category = d.data.data ? d.data.data.category : '';
-    const nodeHeight = d.nodeHeight || NODE_HEIGHT_BASE;
-    const nodeDepth = d.data.depth !== undefined ? d.data.depth : d.depth;
-    const fontSize = getFontSize(nodeDepth, maxDepth);
-    
-    const lines = wrapText(name, MAX_CHARS_PER_LINE);
-    const totalLines = lines.length + (category ? 1 : 0);
-    const lineHeight = NODE_HEIGHT_PER_LINE;
-    const startY = -(totalLines - 1) * lineHeight / 2;
-    
-    // Add wrapped text lines
-    lines.forEach((line, i) => {
-      node.append('text')
-        .attr('class', 'node-label')
-        .attr('text-anchor', 'middle')
-        .attr('y', startY + i * lineHeight)
-        .attr('dy', '0.35em')
-        .attr('font-size', fontSize + 'px')
-        .text(line);
+  // Node labels (name)
+  nodes.append('text')
+    .attr('class', 'node-label')
+    .attr('text-anchor', 'middle')
+    .attr('dy', d => (d.data.data && d.data.data.category) ? '-0.2em' : '0.35em')
+    .attr('font-size', d => {
+      const nodeDepth = d.data.depth !== undefined ? d.data.depth : d.depth;
+      return getFontSize(nodeDepth, maxDepth) + 'px';
+    })
+    .text(d => {
+      const name = d.data.name;
+      const maxLen = 22;
+      return name.length > maxLen ? name.substring(0, maxLen - 2) + '...' : name;
     });
-    
-    // Add category below name
-    if (category) {
-      node.append('text')
-        .attr('class', 'node-category')
-        .attr('text-anchor', 'middle')
-        .attr('y', startY + lines.length * lineHeight)
-        .attr('dy', '0.35em')
-        .attr('font-size', '9px')
-        .text(category.length > 30 ? category.substring(0, 28) + '...' : category);
-    }
-  });
+
+  // Category (second line)
+  nodes.filter(d => d.data.data && d.data.data.category)
+    .append('text')
+    .attr('class', 'node-category')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '1em')
+    .attr('font-size', '9px')
+    .text(d => {
+      const cat = d.data.data.category;
+      return cat.length > 25 ? cat.substring(0, 23) + '...' : cat;
+    });
 
   // Collapse/expand indicator
   nodes.filter(d => d.data.data && d.data.data.children && d.data.data.children.length > 0)
