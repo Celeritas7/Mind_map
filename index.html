@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mind Map DAG Viewer</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+    }
+
+    /* Header / Controls */
+    .header {
+      background: #2c3e50;
+      color: white;
+      padding: 15px 30px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      flex-wrap: wrap;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 500;
+    }
+
+    .header-btn {
+      padding: 8px 15px;
+      font-size: 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: #3498db;
+      color: white;
+      transition: background 0.2s;
+    }
+
+    .header-btn:hover {
+      background: #2980b9;
+    }
+
+    .loading {
+      color: #f39c12;
+      font-size: 14px;
+    }
+
+    .error {
+      color: #e74c3c;
+      font-size: 14px;
+    }
+
+    /* Legend */
+    .legend {
+      background: white;
+      padding: 10px 20px;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      border-bottom: 1px solid #ddd;
+      flex-wrap: wrap;
+    }
+
+    .legend-section {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .legend-title {
+      font-weight: 600;
+      color: #333;
+      font-size: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      color: #555;
+    }
+
+    .legend-shape {
+      width: 24px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .legend-status {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid;
+    }
+
+    .legend-divider {
+      width: 1px;
+      height: 30px;
+      background: #ddd;
+      margin: 0 5px;
+    }
+
+    /* SVG Container */
+    .tree-container {
+      width: 100%;
+      height: calc(100vh - 140px);
+      overflow: auto;
+      background: white;
+    }
+
+    svg {
+      display: block;
+    }
+
+    /* Node styles */
+    .node {
+      cursor: pointer;
+    }
+
+    .node-shape {
+      stroke-width: 2px;
+      transition: filter 0.2s;
+    }
+
+    .node:hover .node-shape {
+      filter: brightness(0.92);
+    }
+
+    .node-label {
+      pointer-events: none;
+      font-weight: 500;
+    }
+
+    .node-category {
+      pointer-events: none;
+      fill: #777;
+    }
+
+    .toggle-icon {
+      font-weight: bold;
+      font-size: 12px;
+      fill: #333;
+      pointer-events: none;
+    }
+
+    /* Edge styles */
+    .link {
+      fill: none;
+      stroke: #aaa;
+      stroke-width: 1.5px;
+    }
+
+    .link-multi {
+      stroke: #3498db;
+      stroke-width: 2px;
+      stroke-dasharray: 5,3;
+    }
+
+    /* Status indicator */
+    .status-indicator {
+      stroke-width: 2px;
+    }
+
+    /* Collapse indicator */
+    .collapse-indicator {
+      fill: white;
+      stroke: #666;
+      stroke-width: 1.5px;
+    }
+
+    /* Error/Info messages */
+    .message {
+      padding: 40px;
+      text-align: center;
+      font-size: 16px;
+      color: #666;
+    }
+
+    .message.error {
+      color: #e74c3c;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🧠 Mind Map DAG Viewer</h1>
+  <button class="header-btn" onclick="expandAll()">➕ Expand All</button>
+  <button class="header-btn" onclick="collapseAll()">➖ Collapse All</button>
+  <button class="header-btn" onclick="resetView()">🔄 Reset View</button>
+  <span id="statusIndicator" class="loading"></span>
+</div>
+
+<div class="legend">
+  <!-- Shape Legend -->
+  <div class="legend-section">
+    <span class="legend-title">Depth Shapes:</span>
+    <div class="legend-item">
+      <svg class="legend-shape" viewBox="0 0 24 16">
+        <rect x="1" y="1" width="22" height="14" fill="#f5f5f5" stroke="#ababab" stroke-width="1.5" rx="0"/>
+      </svg>
+      <span>Leaf</span>
+    </div>
+    <div class="legend-item">
+      <svg class="legend-shape" viewBox="0 0 24 16">
+        <rect x="1" y="1" width="22" height="14" fill="#fee8e8" stroke="#b2a2a2" stroke-width="1.5" rx="3"/>
+      </svg>
+      <span>Level 3+</span>
+    </div>
+    <div class="legend-item">
+      <svg class="legend-shape" viewBox="0 0 24 16">
+        <rect x="1" y="1" width="22" height="14" fill="#fcdaf7" stroke="#b098ac" stroke-width="1.5" rx="5"/>
+      </svg>
+      <span>Level 2</span>
+    </div>
+    <div class="legend-item">
+      <svg class="legend-shape" viewBox="0 0 24 16">
+        <ellipse cx="12" cy="8" rx="11" ry="7" fill="#f3e9cf" stroke="#aaa391" stroke-width="1.5"/>
+      </svg>
+      <span>Level 1</span>
+    </div>
+    <div class="legend-item">
+      <svg class="legend-shape" viewBox="0 0 24 16">
+        <polygon points="5,1 19,1 23,8 19,15 5,15 1,8" fill="#b6d7a8" stroke="#7f9675" stroke-width="1.5"/>
+      </svg>
+      <span>Root</span>
+    </div>
+  </div>
+
+  <div class="legend-divider"></div>
+
+  <!-- Status Legend -->
+  <div class="legend-section">
+    <span class="legend-title">Status:</span>
+    <div class="legend-item">
+      <div class="legend-status" style="background: #27ae60; border-color: #1e8449;"></div>
+      <span>Done</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-status" style="background: #f1c40f; border-color: #d4ac0d;"></div>
+      <span>In Progress</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-status" style="background: #bdc3c7; border-color: #95a5a6;"></div>
+      <span>Not Started</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-status" style="background: #e74c3c; border-color: #c0392b;"></div>
+      <span>Blocked</span>
+    </div>
+  </div>
+
+  <div class="legend-divider"></div>
+
+  <!-- Edge Legend -->
+  <div class="legend-section">
+    <span class="legend-title">Edges:</span>
+    <div class="legend-item">
+      <svg width="30" height="12">
+        <line x1="0" y1="6" x2="30" y2="6" stroke="#aaa" stroke-width="1.5"/>
+      </svg>
+      <span>Single Parent</span>
+    </div>
+    <div class="legend-item">
+      <svg width="30" height="12">
+        <line x1="0" y1="6" x2="30" y2="6" stroke="#3498db" stroke-width="2" stroke-dasharray="5,3"/>
+      </svg>
+      <span>Multiple Parents</span>
+    </div>
+  </div>
+</div>
+
+<div class="tree-container" id="treeContainer">
+  <svg id="treeSvg"></svg>
+</div>
+
+<script>
+// ==================================================
+// GOOGLE SHEET CONFIGURATION
+// ==================================================
+const GOOGLE_SHEET_ID = "1KBNZIgQOdvzCbEV9dsNdbbBvaIotchFNWueSezF_hFA";
+const SHEET_GID = "0";
+
+function getSheetUrl() {
+  return `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+}
+
+// ==================================================
+// STATUS CONFIGURATION
+// ==================================================
+const STATUS_COLORS = {
+  DONE:        { fill: "#27ae60", stroke: "#1e8449" },
+  IN_PROGRESS: { fill: "#f1c40f", stroke: "#d4ac0d" },
+  NOT_STARTED: { fill: "#bdc3c7", stroke: "#95a5a6" },
+  BLOCKED:     { fill: "#e74c3c", stroke: "#c0392b" },
+  ON_HOLD:     { fill: "#e67e22", stroke: "#d35400" },
+  REVIEW:      { fill: "#3498db", stroke: "#2980b9" },
+  DEFAULT:     { fill: "#bdc3c7", stroke: "#95a5a6" }
+};
+
+function getStatusColor(status) {
+  if (!status) return null;
+  const upper = status.toUpperCase().replace(/\s+/g, '_');
+  return STATUS_COLORS[upper] || STATUS_COLORS.DEFAULT;
+}
+
+// ==================================================
+// STYLE CONFIGURATION
+// ==================================================
+const STYLE_SCALE = [
+  { shape: "rectangle",               fill: "#f5f5f5" },
+  { shape: "rounded_rectangle",       fill: "#fee8e8" },
+  { shape: "rounded_rectangle_strong",fill: "#fcdaf7" },
+  { shape: "ellipse",                 fill: "#f3e9cf" },
+  { shape: "hexagon",                 fill: "#b6d7a8" },
+];
+
+const FONT_SIZES = [10, 11, 12, 14, 16];
+const NODE_WIDTH = 160;
+const NODE_HEIGHT = 50;
+
+// ==================================================
+// GLOBAL STATE
+// ==================================================
+let dagData = null;
+let currentRoot = null;
+let maxDepth = 0;
+let collapsedNodes = new Set();
+let nodeMap = {};
+
+// ==================================================
+// UTILITY FUNCTIONS
+// ==================================================
+function darkenColor(hex, factor = 0.7) {
+  hex = hex.replace('#', '');
+  let r = parseInt(hex.substring(0, 2), 16);
+  let g = parseInt(hex.substring(2, 4), 16);
+  let b = parseInt(hex.substring(4, 6), 16);
+  r = Math.floor(r * factor);
+  g = Math.floor(g * factor);
+  b = Math.floor(b * factor);
+  return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+}
+
+function getStyleForDepth(depth, maxDepth) {
+  if (maxDepth === 0) return STYLE_SCALE[STYLE_SCALE.length - 1];
+  const normalizedDepth = 1 - (depth / maxDepth);
+  const index = Math.round(normalizedDepth * (STYLE_SCALE.length - 1));
+  return STYLE_SCALE[index];
+}
+
+function getFontSize(depth, maxDepth) {
+  if (maxDepth === 0) return FONT_SIZES[FONT_SIZES.length - 1];
+  const normalizedDepth = 1 - (depth / maxDepth);
+  const index = Math.round(normalizedDepth * (FONT_SIZES.length - 1));
+  return FONT_SIZES[index];
+}
+
+function setStatus(msg, type = 'loading') {
+  const el = document.getElementById('statusIndicator');
+  el.textContent = msg;
+  el.className = type;
+}
+
+// ==================================================
+// CSV PARSING
+// ==================================================
+function parseCSV(csvText) {
+  const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
+  if (lines.length === 0) return [];
+  
+  const headers = parseCSVLine(lines[0]);
+  const data = [];
+  
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length === 0) continue;
+    
+    const row = {};
+    headers.forEach((header, index) => {
+      row[header.trim()] = (values[index] || '').trim();
+    });
+    
+    // Skip empty rows (no Child)
+    if (!row.Child) continue;
+    
+    data.push(row);
+  }
+  
+  return data;
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  
+  return result;
+}
+
+// ==================================================
+// CSV TO DAG CONVERSION
+// ==================================================
+function csvToDAG(csvData) {
+  const validRows = csvData.filter(row => row.Child);
+  
+  if (validRows.length === 0) {
+    console.error('No valid rows found');
+    return null;
+  }
+  
+  // Build node map (unique nodes)
+  nodeMap = {};
+  const edges = [];
+  
+  validRows.forEach(row => {
+    const childName = row.Child;
+    const parentName = row.Parent;
+    
+    // Create or update node
+    if (!nodeMap[childName]) {
+      nodeMap[childName] = {
+        name: childName,
+        category: row.Category || '',
+        status: row.Status || '',
+        notes: row.Notes || '',
+        parents: [],
+        children: []
+      };
+    } else {
+      // Update with non-empty values
+      if (row.Category && !nodeMap[childName].category) {
+        nodeMap[childName].category = row.Category;
+      }
+      if (row.Status && !nodeMap[childName].status) {
+        nodeMap[childName].status = row.Status;
+      }
+      if (row.Notes && !nodeMap[childName].notes) {
+        nodeMap[childName].notes = row.Notes;
+      }
+    }
+    
+    // Create edge
+    if (parentName && parentName.toUpperCase() !== 'ROOT') {
+      edges.push({ parent: parentName, child: childName });
+      
+      // Ensure parent node exists
+      if (!nodeMap[parentName]) {
+        nodeMap[parentName] = {
+          name: parentName,
+          category: '',
+          status: '',
+          notes: '',
+          parents: [],
+          children: []
+        };
+      }
+    }
+  });
+  
+  // Build parent-child relationships
+  edges.forEach(edge => {
+    const parentNode = nodeMap[edge.parent];
+    const childNode = nodeMap[edge.child];
+    
+    if (parentNode && childNode) {
+      if (!parentNode.children.includes(childNode)) {
+        parentNode.children.push(childNode);
+      }
+      if (!childNode.parents.includes(parentNode)) {
+        childNode.parents.push(parentNode);
+      }
+    }
+  });
+  
+  // Find root (node with Parent = ROOT or no parents)
+  let rootNode = null;
+  const rootRow = validRows.find(row => row.Parent && row.Parent.toUpperCase() === 'ROOT');
+  
+  if (rootRow) {
+    rootNode = nodeMap[rootRow.Child];
+  } else {
+    // Find node with no parents
+    for (const name in nodeMap) {
+      if (nodeMap[name].parents.length === 0) {
+        rootNode = nodeMap[name];
+        break;
+      }
+    }
+  }
+  
+  return { root: rootNode, nodeMap, edges };
+}
+
+// ==================================================
+// CALCULATE DEPTHS (BFS from root)
+// ==================================================
+function calculateDepths(root) {
+  const depths = {};
+  const queue = [{ node: root, depth: 0 }];
+  const visited = new Set();
+  
+  while (queue.length > 0) {
+    const { node, depth } = queue.shift();
+    
+    if (visited.has(node.name)) continue;
+    visited.add(node.name);
+    
+    depths[node.name] = depth;
+    
+    node.children.forEach(child => {
+      if (!visited.has(child.name)) {
+        queue.push({ node: child, depth: depth + 1 });
+      }
+    });
+  }
+  
+  return depths;
+}
+
+// ==================================================
+// CONVERT DAG TO TREE FOR LAYOUT (with depth tracking)
+// ==================================================
+function dagToTreeLayout(root, depths) {
+  const visited = new Set();
+  
+  function buildTree(node, depth) {
+    if (visited.has(node.name)) {
+      // Return a reference node (no children to prevent infinite loop)
+      return {
+        name: node.name,
+        data: node,
+        depth: depths[node.name],
+        isReference: true,
+        children: null
+      };
+    }
+    
+    visited.add(node.name);
+    
+    const visibleChildren = collapsedNodes.has(node.name) ? [] : node.children;
+    const childNodes = visibleChildren.map(child => buildTree(child, depth + 1));
+    
+    return {
+      name: node.name,
+      data: node,
+      depth: depths[node.name],
+      hasMultipleParents: node.parents.length > 1,
+      isReference: false,
+      _collapsed: collapsedNodes.has(node.name),
+      children: childNodes.length > 0 ? childNodes : null
+    };
+  }
+  
+  return buildTree(root, 0);
+}
+
+// ==================================================
+// DRAW SVG SHAPE
+// ==================================================
+function drawShape(selection, shapeType, width, height, fill, stroke, statusStroke) {
+  const halfW = width / 2;
+  const halfH = height / 2;
+  
+  const finalStroke = statusStroke || stroke;
+  const strokeWidth = statusStroke ? 3 : 2;
+
+  selection.selectAll('.node-shape').remove();
+
+  if (shapeType === "rectangle") {
+    selection.insert('rect', ':first-child')
+      .attr('class', 'node-shape')
+      .attr('x', -halfW)
+      .attr('y', -halfH)
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', fill)
+      .attr('stroke', finalStroke)
+      .attr('stroke-width', strokeWidth)
+      .attr('rx', 0);
+  }
+  else if (shapeType === "rounded_rectangle") {
+    selection.insert('rect', ':first-child')
+      .attr('class', 'node-shape')
+      .attr('x', -halfW)
+      .attr('y', -halfH)
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', fill)
+      .attr('stroke', finalStroke)
+      .attr('stroke-width', strokeWidth)
+      .attr('rx', 8);
+  }
+  else if (shapeType === "rounded_rectangle_strong") {
+    selection.insert('rect', ':first-child')
+      .attr('class', 'node-shape')
+      .attr('x', -halfW)
+      .attr('y', -halfH)
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', fill)
+      .attr('stroke', finalStroke)
+      .attr('stroke-width', strokeWidth)
+      .attr('rx', 15);
+  }
+  else if (shapeType === "ellipse") {
+    selection.insert('ellipse', ':first-child')
+      .attr('class', 'node-shape')
+      .attr('cx', 0)
+      .attr('cy', 0)
+      .attr('rx', halfW)
+      .attr('ry', halfH)
+      .attr('fill', fill)
+      .attr('stroke', finalStroke)
+      .attr('stroke-width', strokeWidth);
+  }
+  else if (shapeType === "hexagon") {
+    const points = [
+      [-halfW + 12, -halfH],
+      [halfW - 12, -halfH],
+      [halfW, 0],
+      [halfW - 12, halfH],
+      [-halfW + 12, halfH],
+      [-halfW, 0]
+    ].map(p => p.join(',')).join(' ');
+
+    selection.insert('polygon', ':first-child')
+      .attr('class', 'node-shape')
+      .attr('points', points)
+      .attr('fill', fill)
+      .attr('stroke', finalStroke)
+      .attr('stroke-width', strokeWidth);
+  }
+}
+
+// ==================================================
+// LOAD DATA FROM GOOGLE SHEETS
+// ==================================================
+async function loadData() {
+  setStatus('Loading data...');
+  
+  try {
+    const response = await fetch(getSheetUrl());
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const csvText = await response.text();
+    const csvData = parseCSV(csvText);
+    dagData = csvToDAG(csvData);
+    
+    if (!dagData || !dagData.root) {
+      throw new Error('Could not parse DAG from CSV');
+    }
+    
+    setStatus('');
+    renderDAG();
+  } catch (error) {
+    console.error('Error loading data:', error);
+    setStatus('Error loading data', 'error');
+    document.getElementById('treeContainer').innerHTML = 
+      `<div class="message error">Could not load data. Make sure your Google Sheet is published to web.<br><br>
+      Go to: File → Share → Publish to web → Select CSV format → Publish<br><br>
+      Error: ${error.message}</div>`;
+  }
+}
+
+// ==================================================
+// RENDER DAG
+// ==================================================
+function renderDAG() {
+  if (!dagData || !dagData.root) return;
+  
+  const depths = calculateDepths(dagData.root);
+  maxDepth = Math.max(...Object.values(depths));
+  
+  const treeData = dagToTreeLayout(dagData.root, depths);
+  currentRoot = d3.hierarchy(treeData);
+  
+  update(depths);
+}
+
+function update(depths) {
+  const svg = d3.select('#treeSvg');
+  svg.selectAll('*').remove();
+
+  const allNodes = currentRoot.descendants();
+  const visibleCount = allNodes.length;
+  
+  const margin = { top: 60, right: 250, bottom: 60, left: 120 };
+  const width = Math.max(1400, (maxDepth + 1) * 280 + margin.left + margin.right);
+  const height = Math.max(800, visibleCount * 65 + margin.top + margin.bottom);
+
+  svg.attr('width', width).attr('height', height);
+
+  const g = svg.append('g')
+    .attr('class', 'main')
+    .attr('transform', `translate(${margin.left}, ${margin.top})`);
+
+  const treeLayout = d3.tree()
+    .size([height - margin.top - margin.bottom, width - margin.left - margin.right - 150])
+    .separation((a, b) => (a.parent === b.parent ? 1 : 1.3));
+
+  treeLayout(currentRoot);
+
+  // Store node positions for DAG edges
+  const nodePositions = {};
+  currentRoot.descendants().forEach(d => {
+    nodePositions[d.data.name] = { x: d.x, y: d.y };
+  });
+
+  // Create curved link generator
+  const linkGenerator = d3.linkHorizontal()
+    .x(d => d.y)
+    .y(d => d.x);
+
+  // Draw links
+  g.selectAll('.link')
+    .data(currentRoot.links())
+    .enter()
+    .append('path')
+    .attr('class', d => {
+      const hasMultiParents = d.target.data.hasMultipleParents;
+      return hasMultiParents ? 'link link-multi' : 'link';
+    })
+    .attr('d', linkGenerator);
+
+  // Draw nodes
+  const nodes = g.selectAll('.node')
+    .data(currentRoot.descendants())
+    .enter()
+    .append('g')
+    .attr('class', 'node')
+    .attr('transform', d => `translate(${d.y}, ${d.x})`)
+    .on('click', (event, d) => {
+      const nodeName = d.data.name;
+      if (d.data.data && d.data.data.children && d.data.data.children.length > 0) {
+        if (collapsedNodes.has(nodeName)) {
+          collapsedNodes.delete(nodeName);
+        } else {
+          collapsedNodes.add(nodeName);
+        }
+        renderDAG();
+      }
+    });
+
+  // Draw shapes based on depth with status border
+  nodes.each(function(d) {
+    const nodeDepth = d.data.depth !== undefined ? d.data.depth : d.depth;
+    const style = getStyleForDepth(nodeDepth, maxDepth);
+    const defaultStroke = darkenColor(style.fill);
+    const status = d.data.data ? d.data.data.status : '';
+    const statusColorObj = getStatusColor(status);
+    const statusStroke = statusColorObj ? statusColorObj.stroke : null;
+    
+    drawShape(d3.select(this), style.shape, NODE_WIDTH, NODE_HEIGHT, style.fill, defaultStroke, statusStroke);
+  });
+
+  // Status indicator circle (top-left corner)
+  nodes.filter(d => d.data.data && d.data.data.status)
+    .append('circle')
+    .attr('class', 'status-indicator')
+    .attr('cx', -NODE_WIDTH / 2 + 12)
+    .attr('cy', -NODE_HEIGHT / 2 + 12)
+    .attr('r', 7)
+    .attr('fill', d => getStatusColor(d.data.data.status).fill)
+    .attr('stroke', d => getStatusColor(d.data.data.status).stroke);
+
+  // Multiple parents indicator (top-right corner)
+  nodes.filter(d => d.data.hasMultipleParents)
+    .append('circle')
+    .attr('cx', NODE_WIDTH / 2 - 12)
+    .attr('cy', -NODE_HEIGHT / 2 + 12)
+    .attr('r', 7)
+    .attr('fill', '#3498db')
+    .attr('stroke', '#2980b9')
+    .attr('stroke-width', 2);
+
+  nodes.filter(d => d.data.hasMultipleParents)
+    .append('text')
+    .attr('x', NODE_WIDTH / 2 - 12)
+    .attr('y', -NODE_HEIGHT / 2 + 12)
+    .attr('text-anchor', 'middle')
+    .attr('dy', '0.35em')
+    .attr('font-size', '9px')
+    .attr('fill', 'white')
+    .attr('font-weight', 'bold')
+    .text(d => d.data.data.parents.length);
+
+  // Node labels (name)
+  nodes.append('text')
+    .attr('class', 'node-label')
+    .attr('text-anchor', 'middle')
+    .attr('dy', d => (d.data.data && d.data.data.category) ? '-0.2em' : '0.35em')
+    .attr('font-size', d => {
+      const nodeDepth = d.data.depth !== undefined ? d.data.depth : d.depth;
+      return getFontSize(nodeDepth, maxDepth) + 'px';
+    })
+    .text(d => {
+      const name = d.data.name;
+      const maxLen = 22;
+      return name.length > maxLen ? name.substring(0, maxLen - 2) + '...' : name;
+    });
+
+  // Category (second line)
+  nodes.filter(d => d.data.data && d.data.data.category)
+    .append('text')
+    .attr('class', 'node-category')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '1em')
+    .attr('font-size', '9px')
+    .text(d => {
+      const cat = d.data.data.category;
+      return cat.length > 25 ? cat.substring(0, 23) + '...' : cat;
+    });
+
+  // Collapse/expand indicator
+  nodes.filter(d => d.data.data && d.data.data.children && d.data.data.children.length > 0)
+    .append('circle')
+    .attr('class', 'collapse-indicator')
+    .attr('cx', NODE_WIDTH / 2 + 15)
+    .attr('cy', 0)
+    .attr('r', 10);
+
+  nodes.filter(d => d.data.data && d.data.data.children && d.data.data.children.length > 0)
+    .append('text')
+    .attr('class', 'toggle-icon')
+    .attr('x', NODE_WIDTH / 2 + 15)
+    .attr('y', 0)
+    .attr('text-anchor', 'middle')
+    .attr('dy', '0.35em')
+    .text(d => collapsedNodes.has(d.data.name) ? '+' : '−');
+}
+
+// ==================================================
+// CONTROL FUNCTIONS
+// ==================================================
+function expandAll() {
+  collapsedNodes.clear();
+  renderDAG();
+}
+
+function collapseAll() {
+  // Collapse all nodes except root
+  for (const name in nodeMap) {
+    if (nodeMap[name].children.length > 0) {
+      collapsedNodes.add(name);
+    }
+  }
+  // Keep root expanded
+  if (dagData && dagData.root) {
+    collapsedNodes.delete(dagData.root.name);
+  }
+  renderDAG();
+}
+
+function resetView() {
+  // Collapse nodes at depth > 1
+  collapsedNodes.clear();
+  if (dagData && dagData.root) {
+    const depths = calculateDepths(dagData.root);
+    for (const name in nodeMap) {
+      if (depths[name] > 1 && nodeMap[name].children.length > 0) {
+        collapsedNodes.add(name);
+      }
+    }
+  }
+  renderDAG();
+}
+
+// ==================================================
+// INITIALIZATION
+// ==================================================
+loadData();
+
+</script>
+
+</body>
+</html>

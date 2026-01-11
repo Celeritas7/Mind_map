@@ -1,0 +1,4 @@
+Before generating any code. Refer the index.html for your reference. I want it also to generate a DAG. But my column names are different. And as you cansee in image, I have a entire mind map shown here. Can you generate a mind map logic for file as shown in image? The google sheet link is, https://docs.google.com/spreadsheets/d/1KBNZIgQOdvzCbEV9dsNdbbBvaIotchFNWueSezF_hFA/edit?gid=0#gid=0
+
+
+Can you help me make the filtered mind map based on the Category I assign to them?
