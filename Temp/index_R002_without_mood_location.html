@@ -42,17 +42,11 @@
       border-radius: 4px;
       background: white;
       cursor: pointer;
-      min-width: 140px;
+      min-width: 180px;
     }
 
     .header label {
       font-size: 14px;
-    }
-
-    .filter-group {
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
 
     .header-btn {
@@ -267,31 +261,13 @@
 
 <div class="header">
   <h1>🧠 Mind Map DAG Viewer</h1>
-  <div class="filter-group">
-    <label for="categoryFilter">Category:</label>
-    <select id="categoryFilter">
-      <option value="">All</option>
-    </select>
-  </div>
-  <div class="filter-group">
-    <label for="moodFilter">Mood:</label>
-    <select id="moodFilter">
-      <option value="">All</option>
-      <option value="Energetic">Energetic</option>
-      <option value="Bit tired">Bit tired</option>
-      <option value="Tired">Tired</option>
-      <option value="Sleepy">Sleepy</option>
-    </select>
-  </div>
-  <div class="filter-group">
-    <label for="locationFilter">Location:</label>
-    <select id="locationFilter">
-      <option value="">All</option>
-    </select>
-  </div>
+  <label for="categoryFilter">Filter by Category:</label>
+  <select id="categoryFilter">
+    <option value="">All</option>
+  </select>
   <button class="header-btn" onclick="expandAll()">➕ Expand All</button>
   <button class="header-btn" onclick="collapseAll()">➖ Collapse All</button>
-  <button class="header-btn" onclick="resetView()">🔄 Reset</button>
+  <button class="header-btn" onclick="resetView()">🔄 Reset View</button>
   <span id="statusIndicator" class="loading"></span>
 </div>
 
@@ -434,13 +410,7 @@ let maxDepth = 0;
 let collapsedNodes = new Set();
 let nodeMap = {};
 let allCategories = new Set();
-let allLocations = new Set();
 let currentCategoryFilter = '';
-let currentMoodFilter = '';
-let currentLocationFilter = '';
-
-// Mood levels hierarchy (higher index = lower energy, can do more tasks)
-const MOOD_HIERARCHY = ['Energetic', 'Bit tired', 'Tired', 'Sleepy'];
 
 // ==================================================
 // UTILITY FUNCTIONS
@@ -511,7 +481,7 @@ function calculateNodeHeight(name, category) {
 // ==================================================
 
 // Check if node matches the current category filter (partial match)
-function nodeMatchesCategoryFilter(node, filter) {
+function nodeMatchesFilter(node, filter) {
   if (!filter) return true; // No filter = show all
   if (!node.category) return false;
   
@@ -522,50 +492,16 @@ function nodeMatchesCategoryFilter(node, filter) {
   return nodeCategories.some(cat => cat.includes(filterLower) || filterLower.includes(cat));
 }
 
-// Check if node matches the mood filter (hierarchical)
-function nodeMatchesMoodFilter(node, filter) {
-  if (!filter) return true; // No filter = show all
-  if (!node.mood) return true; // No mood set = can do anytime
-  
-  const filterIndex = MOOD_HIERARCHY.indexOf(filter);
-  const nodeIndex = MOOD_HIERARCHY.indexOf(node.mood);
-  
-  if (filterIndex === -1 || nodeIndex === -1) return true;
-  
-  // Show tasks that require same or less energy than current mood
-  // If I'm "Tired" (index 2), show "Energetic"(0), "Bit tired"(1), "Tired"(2)
-  return nodeIndex <= filterIndex;
-}
-
-// Check if node matches the location filter
-function nodeMatchesLocationFilter(node, filter) {
-  if (!filter) return true; // No filter = show all
-  if (!node.locations) return false; // No locations set = doesn't match
-  
-  const nodeLocations = node.locations.split(',').map(l => l.trim().toLowerCase());
-  const filterLower = filter.toLowerCase();
-  
-  return nodeLocations.some(loc => loc === filterLower);
-}
-
-// Check if node matches ALL active filters (AND logic)
-function nodeMatchesAllFilters(node, categoryFilter, moodFilter, locationFilter) {
-  return nodeMatchesCategoryFilter(node, categoryFilter) &&
-         nodeMatchesMoodFilter(node, moodFilter) &&
-         nodeMatchesLocationFilter(node, locationFilter);
-}
-
 // Get all ancestors of matching nodes
-function getAncestorsOfMatchingNodes(categoryFilter, moodFilter, locationFilter) {
+function getAncestorsOfMatchingNodes(filter) {
   const ancestors = new Set();
   
-  // If no filters, no need to track ancestors
-  if (!categoryFilter && !moodFilter && !locationFilter) return ancestors;
+  if (!filter) return ancestors;
   
   // Find all matching nodes
   const matchingNodes = [];
   for (const name in nodeMap) {
-    if (nodeMatchesAllFilters(nodeMap[name], categoryFilter, moodFilter, locationFilter)) {
+    if (nodeMatchesFilter(nodeMap[name], filter)) {
       matchingNodes.push(nodeMap[name]);
     }
   }
@@ -587,11 +523,10 @@ function getAncestorsOfMatchingNodes(categoryFilter, moodFilter, locationFilter)
 }
 
 // Determine node visibility state
-function getNodeFilterState(node, categoryFilter, moodFilter, locationFilter, ancestors) {
-  // No filters = all visible
-  if (!categoryFilter && !moodFilter && !locationFilter) return 'visible';
+function getNodeFilterState(node, filter, ancestors) {
+  if (!filter) return 'visible'; // No filter = all visible
   
-  if (nodeMatchesAllFilters(node, categoryFilter, moodFilter, locationFilter)) {
+  if (nodeMatchesFilter(node, filter)) {
     return 'match'; // Direct match
   } else if (ancestors.has(node.name)) {
     return 'ancestor'; // Ancestor of a match (dimmed)
@@ -612,22 +547,6 @@ function populateCategoryDropdown() {
     const option = document.createElement('option');
     option.value = category;
     option.textContent = category;
-    select.appendChild(option);
-  });
-}
-
-// Populate location dropdown
-function populateLocationDropdown() {
-  const select = document.getElementById('locationFilter');
-  select.innerHTML = '<option value="">All</option>';
-  
-  // Sort locations alphabetically
-  const sortedLocations = Array.from(allLocations).sort();
-  
-  sortedLocations.forEach(location => {
-    const option = document.createElement('option');
-    option.value = location;
-    option.textContent = location;
     select.appendChild(option);
   });
 }
@@ -699,9 +618,8 @@ function csvToDAG(csvData) {
     return null;
   }
   
-  // Reset categories and locations
+  // Reset categories
   allCategories = new Set();
-  allLocations = new Set();
   
   // Build node map (unique nodes)
   nodeMap = {};
@@ -719,14 +637,6 @@ function csvToDAG(csvData) {
       });
     }
     
-    // Collect locations (handle comma-separated locations)
-    if (row.Locations) {
-      row.Locations.split(',').forEach(loc => {
-        const trimmedLoc = loc.trim();
-        if (trimmedLoc) allLocations.add(trimmedLoc);
-      });
-    }
-    
     // Create or update node
     if (!nodeMap[childName]) {
       nodeMap[childName] = {
@@ -734,8 +644,6 @@ function csvToDAG(csvData) {
         category: row.Category || '',
         status: row.Status || '',
         notes: row.Notes || '',
-        mood: row.Mood || '',
-        locations: row.Locations || '',
         parents: [],
         children: []
       };
@@ -750,12 +658,6 @@ function csvToDAG(csvData) {
       if (row.Notes && !nodeMap[childName].notes) {
         nodeMap[childName].notes = row.Notes;
       }
-      if (row.Mood && !nodeMap[childName].mood) {
-        nodeMap[childName].mood = row.Mood;
-      }
-      if (row.Locations && !nodeMap[childName].locations) {
-        nodeMap[childName].locations = row.Locations;
-      }
     }
     
     // Create edge
@@ -769,8 +671,6 @@ function csvToDAG(csvData) {
           category: '',
           status: '',
           notes: '',
-          mood: '',
-          locations: '',
           parents: [],
           children: []
         };
@@ -971,9 +871,8 @@ async function loadData() {
       throw new Error('Could not parse DAG from CSV');
     }
     
-    // Populate filter dropdowns
+    // Populate category filter dropdown
     populateCategoryDropdown();
-    populateLocationDropdown();
     
     setStatus('');
     renderDAG();
@@ -1009,18 +908,16 @@ function update(depths) {
   // Remove any existing tooltips
   d3.selectAll('.tooltip').remove();
 
-  // Get filter states
-  const categoryFilter = currentCategoryFilter;
-  const moodFilter = currentMoodFilter;
-  const locationFilter = currentLocationFilter;
-  const ancestors = getAncestorsOfMatchingNodes(categoryFilter, moodFilter, locationFilter);
+  // Get filter state
+  const filter = currentCategoryFilter;
+  const ancestors = getAncestorsOfMatchingNodes(filter);
 
   const allNodes = currentRoot.descendants();
   
   // Count only visible nodes for sizing
   const visibleNodes = allNodes.filter(d => {
     const nodeData = d.data.data || {};
-    const state = getNodeFilterState(nodeData, categoryFilter, moodFilter, locationFilter, ancestors);
+    const state = getNodeFilterState(nodeData, filter, ancestors);
     return state !== 'hidden';
   });
   const visibleCount = visibleNodes.length;
@@ -1062,8 +959,8 @@ function update(depths) {
       const targetData = d.target.data.data || {};
       const sourceData = d.source.data.data || {};
       
-      const targetState = getNodeFilterState(targetData, categoryFilter, moodFilter, locationFilter, ancestors);
-      const sourceState = getNodeFilterState(sourceData, categoryFilter, moodFilter, locationFilter, ancestors);
+      const targetState = getNodeFilterState(targetData, filter, ancestors);
+      const sourceState = getNodeFilterState(sourceData, filter, ancestors);
       
       let classes = hasMultiParents ? 'link link-multi' : 'link';
       
@@ -1089,7 +986,7 @@ function update(depths) {
     .append('g')
     .attr('class', d => {
       const nodeData = d.data.data || {};
-      const state = getNodeFilterState(nodeData, categoryFilter, moodFilter, locationFilter, ancestors);
+      const state = getNodeFilterState(nodeData, filter, ancestors);
       
       let classes = 'node';
       if (state === 'hidden') classes += ' node-hidden';
@@ -1113,13 +1010,9 @@ function update(depths) {
       const fullName = d.data.name;
       const category = d.data.data ? d.data.data.category : '';
       const notes = d.data.data ? d.data.data.notes : '';
-      const mood = d.data.data ? d.data.data.mood : '';
-      const locations = d.data.data ? d.data.data.locations : '';
       
       let tooltipContent = `<strong>${fullName}</strong>`;
       if (category) tooltipContent += `<br><em>Category: ${category}</em>`;
-      if (mood) tooltipContent += `<br>Mood: ${mood}`;
-      if (locations) tooltipContent += `<br>Locations: ${locations}`;
       if (notes) tooltipContent += `<br>Notes: ${notes}`;
       
       tooltip
@@ -1285,18 +1178,6 @@ function resetView() {
 // Category filter change handler
 document.getElementById('categoryFilter').addEventListener('change', (e) => {
   currentCategoryFilter = e.target.value;
-  renderDAG();
-});
-
-// Mood filter change handler
-document.getElementById('moodFilter').addEventListener('change', (e) => {
-  currentMoodFilter = e.target.value;
-  renderDAG();
-});
-
-// Location filter change handler
-document.getElementById('locationFilter').addEventListener('change', (e) => {
-  currentLocationFilter = e.target.value;
   renderDAG();
 });
 
